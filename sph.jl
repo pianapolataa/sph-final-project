@@ -50,8 +50,13 @@ function init_particles()
     # Dense block in lower-left corner
     # TO DO 1 and 8
    
-
-
+    # TODO 1:
+    for x in dx : dx : 0.4
+        for y in dx : dx : 0.6
+            push!(pos, [x, y])       # initial position
+            push!(vel, [0.0, 0.0])   # Initial velocity set to zero 
+        end
+    end
 
 
 
@@ -90,7 +95,29 @@ function find_neighbors(pos, grid)
 
     # TO DO 2 and 9
     
+    # TODO 2:
+    for i in eachindex(pos)
+        cx = clamp(Int(floor(pos[i][1] / cell_size)), 0, grid_res)
+        cy = clamp(Int(floor(pos[i][2] / cell_size)), 0, grid_res)
 
+        # check surrounding 9 cells' hash keys
+        for dx_offset in -1:1
+            for dy_offset in -1:1
+                key = (cx + dx_offset, cy + dy_offset)
+
+                # push other particles in grid[key]
+                if haskey(grid, key)
+                    for j in grid[key]
+                        if i != j 
+                            if norm(pos[i] - pos[j]) <= h # smoothing, only oush if within distance h
+                                push!(neighbors[i], j) 
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
 
 
 
@@ -106,9 +133,10 @@ function compute_density!(pos, rho, neighbors)
         ρ = mass * W_poly6(0.0) #initialize density with self contribution
 
         # TO DO 3 - compute density via smoothing 
-
-
-        
+        for j in neighbors[i]
+            r = norm(pos[i] - pos[j])
+            ρ += mass * W_poly6(r)
+        end
 
         rho[i] = max(ρ, 1e-6)  # prevent division issues
     end
@@ -134,10 +162,10 @@ function compute_forces(pos, vel, rho, P, neighbors)
              # TO DO 4 - compute pressure force and viscosity force
 
             # Symmetric pressure force (stable)
-            #f_p += 
+            f_p += -mass * (P[i] + P[j]) / (2.0 * rho[j]) * gradW_spiky(rij)
            
             # Viscosity
-            # f_v +=
+            f_v += mu * mass * (vel[j] - vel[i]) / rho[j] * lapW_visc(r)
         end
 
         forces[i] = f_p + f_v + g #gravity also added
@@ -151,7 +179,27 @@ end
 # -----------------------------
 function integrate!(pos, vel, accel)
     # TO DO 5 and 10
+    wall_damping = 0.5  
+    floor_damping = 0.2 
 
+    for i in eachindex(pos)
+        vel[i] += accel[i] * dt # update velocity
+        pos[i] += vel[i] * dt # update position
+
+        if pos[i][1] < 0.0 # left wall
+            pos[i][1] = 0.0
+            vel[i][1] *= -wall_damping
+        elseif pos[i][1] > 1.0 # right wall
+            pos[i][1] = 1.0
+            vel[i][1] *= -wall_damping
+        end
+
+        if pos[i][2] < 0.0 # floor
+            pos[i][2] = 0.0
+            vel[i][2] *= -floor_damping
+        end
+        
+    end
     
 end
 
