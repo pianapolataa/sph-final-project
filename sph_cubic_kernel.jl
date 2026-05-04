@@ -23,8 +23,9 @@ const dt   = 2.0e-5
 const STEPS = 100000
 const SAVE_EVERY = 10
 const dx   = h * 0.8
+const support_radius = 2.0 * h
 
-const cell_size = h
+const cell_size = support_radius
 const grid_res = Int(ceil(1.0 / cell_size))  # domain [0,1]
 
 # -----------------------------
@@ -40,6 +41,49 @@ function gradW_spiky(rvec)
 end
 
 lapW_visc(r) = (0 ≤ r ≤ h) ? 20/(3*pi*h^5)*(h - r) : 0.0
+
+# Cubic spline kernels
+
+function W_cubic(r)
+    q = r / h
+    sigma = 10.0 / (7.0 * pi * h^2)
+    if 0 ≤ q < 1
+        return sigma * (1.0 - 1.5*q^2 + 0.75*q^3)
+    elseif 1 ≤ q < 2
+        return sigma * (0.25 * (2.0 - q)^3)
+    else
+        return 0.0
+    end
+end
+
+function gradW_cubic(rvec)
+    r = norm(rvec)
+    q = r / h
+    sigma = 10.0 / (7.0 * pi * h^2)
+    if 0 < q < 1
+        # Gradient of (1 - 1.5q^2 + 0.75q^3)
+        return sigma / h * (-3.0*q + 2.25*q^2) * (rvec / r)
+    elseif 1 ≤ q < 2
+        # Gradient of 0.25(2-q)^3
+        return sigma / h * (-0.75 * (2.0 - q)^2) * (rvec / r)
+    else
+        return zeros(2)
+    end
+end
+
+function lapW_cubic(r)
+    q = r / h
+    sigma = 10.0 / (7.0 * pi * h^2)
+    if q == 0
+        return -6.0 * sigma / h^2
+    elseif 0 < q < 1
+        return sigma / h^2 * (-6.0 + 6.75*q)
+    elseif 1 ≤ q < 2
+        return sigma / h^2 * (3.0 / q - 6.0 + 2.25*q)
+    else
+        return 0.0
+    end
+end
 
 # -----------------------------
 # Initialization (corner dam)
@@ -111,7 +155,7 @@ function find_neighbors(pos, grid)
                 if haskey(grid, key)
                     for j in grid[key]
                         if i != j 
-                            if norm(pos[i] - pos[j]) <= h # smoothing, only oush if within distance h
+                            if norm(pos[i] - pos[j]) <= support_radius # smoothing, only oush if within distance h
                                 push!(neighbors[i], j) 
                             end
                         end
@@ -132,15 +176,15 @@ end
 # -----------------------------
 function compute_density!(pos, rho, neighbors)
     for i in eachindex(pos)
-        ρ = mass * W_poly6(0.0) #initialize density with self contribution
+        p = mass * W_cubic(0.0) #initialize density with self contribution
 
         # TO DO 3 - compute density via smoothing 
         for j in neighbors[i]
             r = norm(pos[i] - pos[j])
-            ρ += mass * W_poly6(r)
+            p += mass * W_cubic(r)
         end
 
-        rho[i] = max(ρ, 1e-6)  # prevent division issues
+        rho[i] = max(p, 1e-6)  # prevent division issues
     end
 end
 
@@ -164,7 +208,7 @@ function compute_forces(pos, vel, rho, P, neighbors)
              # TO DO 4 - compute pressure force and viscosity force
 
             # # Symmetric pressure force (stable)
-            f_p += -mass * (P[i] + P[j]) / (2.0 * rho[i] * rho[j]) * gradW_spiky(rij)     
+            f_p += -mass * (P[i] + P[j]) / (2.0 * rho[i] * rho[j]) * gradW_cubic(rij)     
 
             # Viscosity
             f_v += mu * mass * (vel[j] - vel[i]) / rho[j] * lapW_visc(r)
@@ -213,7 +257,7 @@ function xsph!(vel, pos, rho, neighbors)
         corr = zeros(2)
         for j in neighbors[i]
             corr += mass * (vel[j] - vel[i]) / rho[j] *
-                    W_poly6(norm(pos[i] - pos[j]))
+                    W_cubic(norm(pos[i] - pos[j]))
         end
         newvel[i] += ε * corr
     end
