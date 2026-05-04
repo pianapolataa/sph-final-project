@@ -161,9 +161,9 @@ function compute_forces(pos, vel, rho, P, neighbors)
             
              # TO DO 4 - compute pressure force and viscosity force
 
-            # Symmetric pressure force (stable)
-            f_p += -mass * (P[i] + P[j]) / (2.0 * rho[j]) * gradW_spiky(rij)
-           
+            # # Symmetric pressure force (stable)
+            f_p += -mass * (P[i] + P[j]) / (2.0 * rho[i] * rho[j]) * gradW_spiky(rij)     
+
             # Viscosity
             f_v += mu * mass * (vel[j] - vel[i]) / rho[j] * lapW_visc(r)
         end
